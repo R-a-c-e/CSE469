@@ -5,6 +5,7 @@ import os
 import datetime
 import sys
 import uuid
+import re
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from Crypto.Util.Padding import unpad
@@ -69,6 +70,7 @@ class Block():
         parent_sha256, timestamp, case_id, item_id, state, creator, owner, data_length = struct.unpack(Block.format_string, block_byteform)
         return Block(parent_sha256=parent_sha256.decode(), timestamp=timestamp, case_id=case_id, item_id=item_id, state=state.decode(), creator=creator.decode(), owner=owner.decode(), data_length=data_length, data=b'')
 
+
 def init():
     if os.path.exists(CONST_BCHOC_FILEPATH):
         print("Blockchain already exists.")
@@ -81,6 +83,7 @@ def init():
     with open(CONST_BCHOC_FILEPATH, 'wb') as file:
         file.write(initial_block)
     print("Blockchain initialized.")
+
 
 def add_evidence(case_id, item_ids, creator_password, creator):
     # Check if blockchain file exists
@@ -105,15 +108,18 @@ def add_evidence(case_id, item_ids, creator_password, creator):
             # Write block to file
             file.write(packed_block)
             print(f"Evidence item {item_id} added to the blockchain.")
+    
 
 # Function to encrypt data using AES ECB mode
 def encrypt_data(data):
     ciphertext = CIPHER.encrypt(pad(data, AES.block_size))
     return ciphertext
 
+
 def decrypt_data(ciphertext):
     plaintext = CIPHER.decrypt(ciphertext)
     return plaintext.strip(b'x\00')
+
 
 def unique_evidence_id(item_id):
     with open(CONST_BCHOC_FILEPATH, 'rb') as file:
@@ -131,6 +137,67 @@ def unique_evidence_id(item_id):
                 if block_id.decode() == str(item_id):
                     return False  # item_id is not unique
     return True  # item_id is unique
+
+
+# traverses the block chain to find a given item id
+def get_blocks():
+    bin_data = ""
+    idx = 0
+    block_arr = []
+
+    # read the blockchain file
+    with open('blockchain.bin', 'rb') as bin_file:
+        bin_data = bin_file.read()
+    
+    # get the length
+    len_data = len(bin_data)
+
+    # get the intitial
+    block_arr.append(Block.unpack_block(bin_data[:144]))
+    
+    # get the rest
+    while idx+158 <= len_data:
+        block_data = bin_data[157+idx:idx+157+144]
+        block = Block.unpack_block(block_data)
+        block_arr.append(block)
+        idx += 144
+    
+    print("all good here")
+
+    # return the array of blocks
+    return block_arr
+
+
+# structured printing of each block
+def print_blocks(blocks):
+    # remove the initial block (for now)
+    blocks = blocks[1:]
+    print("Showing all blocks")
+    print("------------------")
+
+    for block in blocks:
+        item_id = decrypt_data(block.item_id)
+        case_id = decrypt_data(block.case_id)
+        creator = block.creator
+        owner = block.owner
+        data_len = block.data_length
+        data = block.data
+
+        print(f"Evidence item {int(item_id)} of case {int(case_id)} was created by {creator} and owned by {owner}. The data in the block is: {data}")
+        print("-------------------")
+
+def extract_value(key, block_string):
+    pattern = re.compile(r'\b' + key + r'=(.*?)(?=[,)])')
+    print("pattern works")
+    match = pattern.search(block_string)
+    print(match)
+    if match:
+        return match.group(1).strip()
+    else:
+        return None
+
+
+
 if __name__=="__main__":
 
     if "BCHOC_FILE_PATH" in os.environ:
@@ -140,6 +207,7 @@ if __name__=="__main__":
 
     if sys.argv[1] == 'init':
         init()
+    
     elif sys.argv[1] == 'add':
         case_id_index = sys.argv.index('-c') + 1
         case_id = sys.argv[case_id_index]
@@ -150,3 +218,24 @@ if __name__=="__main__":
         password_index = sys.argv.index('-p') + 1
         creator_password = sys.argv[password_index]
         add_evidence(case_id, item_ids, creator_password, creator)
+    
+    elif sys.argv[1] == 'checkout':
+        item_id_index = sys.argv.index('-i') + 1
+        item_id = sys.argv[item_id_index]
+        password_index = sys.argv.index('-p') + 1
+        password = sys.argv[password_index]
+        print(f"item id is: {item_id}, password is: {password}")
+        print("This function is not complete")
+
+    elif sys.argv[1] == 'checkin':
+        item_id_index = sys.argv.index('-i') + 1
+        item_id = sys.argv[item_id_index]
+        password_index = sys.argv.index('-p') + 1
+        password = sys.argv[password_index]
+        print(f"item id is: {item_id}, password is: {password}")
+        print("This function is not complete")
+
+    elif sys.argv[1] == 'show':
+        blocks = get_blocks()
+        print_blocks(blocks)    
+        
