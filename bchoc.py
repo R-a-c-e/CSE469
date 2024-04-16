@@ -6,8 +6,6 @@ import datetime
 import sys
 import uuid
 from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
-from Crypto.Util.Padding import unpad
 import argparse
 
 #the blockchain will consist of blocks, stored sequentially in binary format in a file. This means there is no
@@ -189,28 +187,78 @@ def unique_evidence_id(item_id):
     return True  # item_id is unique
 
 def checkin(item_id, password):
-    return True
-
-def checkout(item_id, password):
-    with open(CONST_BCHOC_FILEPATH, 'rb') as file:
+    status = None
+    block_to_add = None
+    data_to_add = None
+    with open(CONST_BCHOC_FILEPATH, 'r+b') as file:
         while True:
             # Read a block from the file
             block_data = file.read(Block.block_header_size)
             if not block_data:
-                break  # Reached end of file
+                if status == None:
+                    print("No Block Found")
+                    sys.exit(1)
+                else:
+                    if status.decode().strip('\x00') == "CHECKEDOUT":
+                        file.seek(0,2)
+                        block = block_to_add
+                        block.state = struct.pack('12s', Block.CONST_CHECKEDIN.encode())
+                        block.owner = struct.pack('12s', match_password(password).encode())
+                        file.write(block.pack_block() + data_to_add)
+                        print("Block Checkedin")
+                        break  # Reached end of file
+                    else:
+                        print("Can NOT Checkin")
+                        sys.exit(1)
             # Unpack the block data
             block = Block.unpack_block(block_data)
-            file.read(block.data_length)
+            data = file.read(block.data_length)
             # Check if item_id matches any existing item_id in the blockchain
             block_id = decrypt_data(block.item_id)
             block_id = int.from_bytes(block_id, byteorder='big')
-            print(str(block_id) == str(item_id))
             if str(block_id) == str(item_id):
                 if match_password(password) != None:
-                    file.seek(file.tell() - 144)
-                    file.seek(0x68)
-                    block_pos = file.tell()
-                    break
+                    status = block.state
+                    block_to_add = block
+                    data_to_add = data
+
+def checkout(item_id, password):
+    status = None
+    block_to_add = None
+    data_to_add = None
+    with open(CONST_BCHOC_FILEPATH, 'r+b') as file:
+        while True:
+            # Read a block from the file
+            block_data = file.read(Block.block_header_size)
+            if not block_data:
+                if status == None:
+                    print("No Block Found")
+                    sys.exit(1)
+                else:
+                    if status.decode().strip('\x00') == "CHECKEDIN":
+                        file.seek(0,2)
+                        block = block_to_add
+                        block.state = struct.pack('12s', Block.CONST_CHECKEDOUT.encode())
+                        block.owner = struct.pack('12s', match_password(password).encode())
+                        file.write(block.pack_block() + data_to_add)
+                        print("Block Checkedout")
+                        break  # Reached end of file
+                    else:
+                        print("Can NOT Checkout")
+                        sys.exit(1)
+            # Unpack the block data
+            block = Block.unpack_block(block_data)
+            data = file.read(block.data_length)
+            # Check if item_id matches any existing item_id in the blockchain
+            block_id = decrypt_data(block.item_id)
+            block_id = int.from_bytes(block_id, byteorder='big')
+            if str(block_id) == str(item_id):
+                if match_password(password) != None:
+                    status = block.state
+                    block_to_add = block
+                    data_to_add = data
+
+
     
 
 if __name__=="__main__":
