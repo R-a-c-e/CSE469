@@ -2,7 +2,6 @@
 import struct
 import time
 import os
-import datetime
 import sys
 import uuid
 from Crypto.Cipher import AES
@@ -29,17 +28,6 @@ class Block():
     CONST_DISPOSED = "DISPOSED"
     CONST_DESTROYED = "DESTROYED"
     CONST_RELEASED = "RELEASED"
-
-    CONST_POLICE = "Police"
-    CONST_LAWYER = "Lawyer"
-    CONST_ANALYST = "Analyst"
-    CONST_EXECUTIVE = "Executive"
-
-    BCHOC_PASSWORD_POLICE = "P80P"
-    BCHOC_PASSWORD_LAWYER = "L76L"
-    BCHOC_PASSWORD_ANALYST = "A65A"
-    BCHOC_PASSWORD_EXECUTIVE = "E69E"
-    BCHOC_PASSWORD_CREATOR = "C67C"
 
     #assumes checks for proper input, truncaton of input, encryption of fields, etc happen after accpeting user input
     def __init__(self, parent_sha256, timestamp, case_id, item_id, state, creator, owner, data_length, data):
@@ -87,6 +75,15 @@ def match_password(password):
 
     # Check if the provided password matches any predefined password
     return predefined_passwords.get(password, None)
+
+def valid_reason(reason):
+    predefined_reason = {
+        "DISPOSED": 1,
+        "DESTROYED": 1,
+        "RELEASED": 1
+    }
+   
+    return predefined_reason.get(reason, None)
 
 def init():
     try:
@@ -258,7 +255,40 @@ def checkout(item_id, password):
                     block_to_add = block
                     data_to_add = data
 
-
+def remove(item_id, password, reason):
+    status = None
+    block_to_remove = None
+    data_to_remove = None
+    with open(CONST_BCHOC_FILEPATH, 'r+b') as file:
+        while True:
+            # Read a block from the file
+            block_data = file.read(Block.block_header_size)
+            if not block_data:
+                if status == None:
+                    print("Can Not Remove")
+                    sys.exit(1)
+                else:
+                    if status.decode().strip('\x00') == "CHECKEDIN":
+                        file.seek(0,2)
+                        block = block_to_remove
+                        block.state = struct.pack('12s', reason.encode())
+                        file.write(block.pack_block() + data_to_remove)
+                        print("Block", reason)
+                        break  # Reached end of file
+                    else:
+                        print("Can NOT Remove")
+                        sys.exit(1)
+            # Unpack the block data
+            block = Block.unpack_block(block_data)
+            data = file.read(block.data_length)
+            # Check if item_id matches any existing item_id in the blockchain
+            block_id = decrypt_data(block.item_id)
+            block_id = int.from_bytes(block_id, byteorder='big')
+            if str(block_id) == str(item_id):
+                if match_password(password) == "CREATOR":
+                    status = block.state
+                    block_to_remove = block
+                    data_to_remove = data
     
 
 if __name__=="__main__":
@@ -299,3 +329,14 @@ if __name__=="__main__":
         checkout_parser.add_argument("-p", "--password", required=True, help="Creator's password")
         args = parser.parse_args()
         checkout(args.item_id, args.password)
+    elif sys.argv[1] == 'remove':
+        remove_parser = subparsers.add_parser("remove", help="Remove an item from the blockchain")
+        remove_parser.add_argument("-i", "--item-id", required=True, help="Item identifier")
+        remove_parser.add_argument("-y", "--reason", required=True, help="Reason for removal")
+        remove_parser.add_argument("-p", "--password", required=True, help="Creator's password")
+        args = parser.parse_args()
+        if valid_reason(args.reason) == 1:
+            remove(args.item_id, args.password, args.reason)
+        else:
+            print("Invalid Reason")
+            sys.exit(1)
