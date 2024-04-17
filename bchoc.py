@@ -363,7 +363,7 @@ def show_history(case_id, item_id, num_entries, reverse, password):
             while True:
                 block_data = file.read(Block.block_header_size)
                 if not block_data:
-                    continue
+                    break
                 # Unpack the block data
                 block = Block.unpack_block(block_data)
                 data = file.read(block.data_length)
@@ -373,10 +373,9 @@ def show_history(case_id, item_id, num_entries, reverse, password):
                 block_case = decrypt_data(block.case_id)
                 block_case_data = uuid.UUID(bytes=block_case)
                 if str(block_id_data) == str(item_id) or str(block_case_data) == str(case_id):
-                    if match_password(password) != None:
-                        datetime_obj = datetime.utcfromtimestamp(block.timestamp)
-                        formatted_time_str = datetime_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-                        history_entries.append({'caseid': str(block.case_ida), 'evidence_id' : str(block.item_id), 'state': block.state.decode().strip('\x00'), 'timestamp' : formatted_time_str})
+                    datetime_obj = datetime.utcfromtimestamp(block.timestamp)
+                    formatted_time_str = datetime_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                    history_entries.append({'caseid': block.case_id.decode(), 'evidence_id' : block.item_id.decode(), 'state': block.state.decode().strip('\x00'), 'timestamp' : formatted_time_str})
     for entry in history_entries:
         print("Case:", entry['caseid'])
         print("Item:", entry['evidence_id'])
