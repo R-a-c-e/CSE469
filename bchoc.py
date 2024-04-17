@@ -7,6 +7,7 @@ import uuid
 from Crypto.Cipher import AES
 import argparse
 from datetime import datetime
+import hashlib
 
 #the blockchain will consist of blocks, stored sequentially in binary format in a file. This means there is no
 #linked list or other data structures directly connecting one block to another; it is implicit through their
@@ -383,6 +384,99 @@ def show_history(case_id, item_id, num_entries, reverse, password):
         print("Time:", entry['timestamp'])
         print()
 
+def verify_blockchain():
+    with open(CONST_BCHOC_FILEPATH, 'rb') as file:
+        item_state = {}
+        prev_block_hash = None
+        block_data = file.read(Block.block_header_size)
+        if not block_data:
+            return  # Reached end of file
+        
+        # Unpack the block data
+        block = Block.unpack_block(block_data)
+        data = file.read(block.data_length)
+        prev_block_hash = hashlib.sha256(block.pack_block() + data)
+        prev_block_parent = block.parent_sha256
+        prev_block_item = block.item_id
+        prev_block_state = block.state   
+        if block.state.decode().strip('\x00') != "INITIAL":
+            print("Invalid Initial")
+            sys.exit(1)
+        else:
+            while True:
+                item_state[prev_block_item] = prev_block_state
+                block_data = file.read(Block.block_header_size)
+                if not block_data:
+                    break  # Reached end of file
+                
+                # Unpack the block data
+                block = Block.unpack_block(block_data)
+                data = file.read(block.data_length)
+                curr_block_hash = hashlib.sha256(block.pack_block() + data)
+                curr_block_parent = block.parent_sha256
+                curr_block_item = block.item_id
+                curr_block_state = block.state
+                if prev_block_hash == curr_block_hash:
+                    print("Duplicate Item")
+                    sys.exit(1)
+                elif prev_block_parent == curr_block_parent:
+                    print("Duplicate Hashes")
+                    sys.exit(1)
+                elif curr_block_item in item_state:
+                    if valid_reason(item_state[curr_block_item].decode().strip('\x00')):
+                        print("Block is removed")
+                        sys.exit(1)
+                    elif curr_block_state == item_state[curr_block_item]:
+                        print("Impromper Block Procedure")
+                        sys.exit(1)
+                prev_block_hash = hashlib.sha256(block.pack_block() + data)
+                prev_block_parent = block.parent_sha256
+                prev_block_item = block.item_id
+                prev_block_state = block.state  
+
+def show_cases():
+    cases = {}
+    with open(CONST_BCHOC_FILEPATH, 'rb') as file:
+        while True:
+            block_data = file.read(Block.block_header_size)
+            if not block_data:
+                break  # Reached end of file
+            
+            # Unpack the block data
+            block = Block.unpack_block(block_data)
+            data = file.read(block.data_length)
+            if data != b'Initial block\x00':
+                block_case = decrypt_data(block.case_id)
+                block_case_data = uuid.UUID(bytes=block_case)
+                block_id = decrypt_data(block.item_id)
+                block_id_data = int.from_bytes(block_id, byteorder='big')
+                if str(block_case_data) not in cases:
+                    cases[str(block_case_data)] = str(block_id_data)
+    for case in cases:
+        print(case)
+
+def show_items(case_id):
+    ids = {}
+    with open(CONST_BCHOC_FILEPATH, 'rb') as file:
+        while True:
+            block_data = file.read(Block.block_header_size)
+            if not block_data:
+                break  # Reached end of file
+            
+            # Unpack the block data
+            block = Block.unpack_block(block_data)
+            data = file.read(block.data_length)
+            if data != b'Initial block\x00':
+                block_case = decrypt_data(block.case_id)
+                block_case_data = uuid.UUID(bytes=block_case)
+                block_id = decrypt_data(block.item_id)
+                block_id_data = int.from_bytes(block_id, byteorder='big')
+                if str(block_case_data) == case_id:
+                    if str(block_id_data) not in ids:
+                        ids[str(block_id_data)] = str(block_case_data)
+    for item_id in ids:
+        print(item_id)
+
 
 
 if __name__=="__main__":
@@ -391,7 +485,7 @@ if __name__=="__main__":
     else:
         CONST_BCHOC_FILEPATH = "blockchain.bin"
 
-    if sys.argv[1] != 'show' and sys.argv[1] != 'init':
+    if sys.argv[1] != 'show' and sys.argv[1] != 'init' and sys.argv[1] != 'verify':
         parser = argparse.ArgumentParser(description="Blockchain Chain of Custody (BCHOC) Tool")
         subparsers = parser.add_subparsers(dest="command", help="Available commands")
         
@@ -468,3 +562,12 @@ if __name__=="__main__":
         except ValueError:
             password = None
         show_history(case_id, item_id, num_id, reverse, password)
+    elif sys.argv[1] == 'verify':
+        verify_blockchain()
+    elif sys.argv[1] == 'show' and sys.argv[2] == 'cases':
+        show_cases()
+    elif sys.argv[1] == 'show' and sys.argv[2] == 'items':
+        command_args = sys.argv
+        case_index = command_args.index('-c')
+        case_id = command_args[case_index + 1]
+        show_items(case_id)
