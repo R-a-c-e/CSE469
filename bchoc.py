@@ -6,6 +6,7 @@ import sys
 import uuid
 from Crypto.Cipher import AES
 import argparse
+from datetime import datetime
 
 #the blockchain will consist of blocks, stored sequentially in binary format in a file. This means there is no
 #linked list or other data structures directly connecting one block to another; it is implicit through their
@@ -289,7 +290,101 @@ def remove(item_id, password, reason):
                     status = block.state
                     block_to_remove = block
                     data_to_remove = data
-    
+
+def show_history(case_id, item_id, num_entries, reverse, password):
+    history_entries = []   
+    with open(CONST_BCHOC_FILEPATH, 'rb') as file:
+        while True and reverse == None and password != None:
+            # Read a block from the file
+            block_data = file.read(Block.block_header_size)
+            if not block_data:
+                break
+            # Unpack the block data
+            block = Block.unpack_block(block_data)
+            data = file.read(block.data_length)
+            # Check if item_id matches any existing item_id in the blockchain
+            block_id = decrypt_data(block.item_id)
+            block_id_data = int.from_bytes(block_id, byteorder='big')
+            block_case = decrypt_data(block.case_id)
+            block_case_data = uuid.UUID(bytes=block_case)
+            if str(block_id_data) == str(item_id) or str(block_case_data) == str(case_id):
+                if match_password(password) != None:
+                    datetime_obj = datetime.utcfromtimestamp(block.timestamp)
+                    formatted_time_str = datetime_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                    history_entries.append({'caseid': str(block_case_data), 'evidence_id' : str(block_id_data), 'state': block.state.decode().strip('\x00'), 'timestamp' : formatted_time_str})
+            elif num_entries != None and match_password(password) != None:
+                for n in range(int(num_entries)):
+                    if not block_data:
+                        break
+                    if block.state.strip(b'x\00') != b'INITIAL':
+                        block_id = decrypt_data(block.item_id)
+                        block_id_data = int.from_bytes(block_id, byteorder='big')
+                        block_case = decrypt_data(block.case_id)
+                        block_case_data = uuid.UUID(bytes=block_case)
+                        datetime_obj = datetime.utcfromtimestamp(block.timestamp)
+                        formatted_time_str = datetime_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                        history_entries.append({'caseid': str(block_case_data), 'evidence_id' : str(block_id_data), 'state': block.state.decode().strip('\x00'), 'timestamp' : formatted_time_str})
+                    else:
+                        datetime_obj = datetime.utcfromtimestamp(time.time())
+                        formatted_time_str = datetime_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                        history_entries.append({'caseid': b'00000000-0000-0000-0000-000000000000'.decode(), 'evidence_id' : b'0'.decode(), 'state': block.state.decode().strip('\x00'), 'timestamp' : formatted_time_str})
+                    block_data = file.read(Block.block_header_size)
+                    try:
+                        block = Block.unpack_block(block_data)
+                    except:
+                        break
+                    data = file.read(block.data_length)
+                break
+        if reverse == 1:
+            file.seek(0,2)
+            end = file.tell()
+            size_in_bytes = os.path.getsize(CONST_BCHOC_FILEPATH)
+            num_blocks = (size_in_bytes - 158) / Block.block_header_size
+            for n in range(int(num_blocks)):
+                file.seek(end - (n + 1) * Block.block_header_size)
+                block_data = file.read(Block.block_header_size)
+                block = Block.unpack_block(block_data)
+                # Check if item_id matches any existing item_id in the blockchain
+                block_id = decrypt_data(block.item_id)
+                block_id_data = int.from_bytes(block_id, byteorder='big')
+                block_case = decrypt_data(block.case_id)
+                block_case_data = uuid.UUID(bytes=block_case)
+                datetime_obj = datetime.utcfromtimestamp(block.timestamp)
+                formatted_time_str = datetime_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                if item_id == None:
+                    history_entries.append({'caseid': str(block_case_data), 'evidence_id' : str(block_id_data), 'state': block.state.decode().strip('\x00'), 'timestamp' : formatted_time_str})
+                elif str(block_id_data) == str(item_id):
+                    history_entries.append({'caseid': str(block_case_data), 'evidence_id' : str(block_id_data), 'state': block.state.decode().strip('\x00'), 'timestamp' : formatted_time_str})
+            datetime_obj = datetime.utcfromtimestamp(time.time())
+            formatted_time_str = datetime_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            if item_id == None:
+                history_entries.append({'caseid': b'00000000-0000-0000-0000-000000000000'.decode(), 'evidence_id' : b'0'.decode(), 'state': Block.CONST_INITIAL, 'timestamp' : formatted_time_str})
+        elif password == None:
+            while True:
+                block_data = file.read(Block.block_header_size)
+                if not block_data:
+                    continue
+                # Unpack the block data
+                block = Block.unpack_block(block_data)
+                data = file.read(block.data_length)
+                # Check if item_id matches any existing item_id in the blockchain
+                block_id = decrypt_data(block.item_id)
+                block_id_data = int.from_bytes(block_id, byteorder='big')
+                block_case = decrypt_data(block.case_id)
+                block_case_data = uuid.UUID(bytes=block_case)
+                if str(block_id_data) == str(item_id) or str(block_case_data) == str(case_id):
+                    if match_password(password) != None:
+                        datetime_obj = datetime.utcfromtimestamp(block.timestamp)
+                        formatted_time_str = datetime_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                        history_entries.append({'caseid': str(block.case_ida), 'evidence_id' : str(block.item_id), 'state': block.state.decode().strip('\x00'), 'timestamp' : formatted_time_str})
+    for entry in history_entries:
+        print("Case:", entry['caseid'])
+        print("Item:", entry['evidence_id'])
+        print("Action:", entry['state'])
+        print("Time:", entry['timestamp'])
+        print()
+
+
 
 if __name__=="__main__":
     if 'BCHOC_FILE_PATH' in os.environ:
@@ -297,10 +392,33 @@ if __name__=="__main__":
     else:
         CONST_BCHOC_FILEPATH = "blockchain.bin"
 
+    if sys.argv[1] != 'show' and sys.argv[1] != 'init':
+        parser = argparse.ArgumentParser(description="Blockchain Chain of Custody (BCHOC) Tool")
+        subparsers = parser.add_subparsers(dest="command", help="Available commands")
+        
+        add_parser = subparsers.add_parser("add", help="Add a new evidence item to the blockchain")
+        add_parser.add_argument("-c", "--case-id", required=True, help="Case identifier")
+        add_parser.add_argument("-i", "--item-id", action="append", required=True, help="Evidence item identifier")
+        add_parser.add_argument("-g", "--creator", required=True, help="Creator")
+        add_parser.add_argument("-p", "--password", required=True, help="Creator's password")
 
-    parser = argparse.ArgumentParser(description="Blockchain Chain of Custody (BCHOC) Tool")
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    
+        # Define the parser for the 'checkin' command
+        checkin_parser = subparsers.add_parser("checkin", help="Check in an evidence item to the blockchain")
+        checkin_parser.add_argument("-i", "--item-id", required=True, help="Evidence item identifier")
+        checkin_parser.add_argument("-p", "--password", required=True, help="Creator's password")
+
+        # Define the parser for the 'checkin' command
+        checkout_parser = subparsers.add_parser("checkout", help="Check out an evidence item to the blockchain")
+        checkout_parser.add_argument("-i", "--item-id", required=True, help="Evidence item identifier")
+        checkout_parser.add_argument("-p", "--password", required=True, help="Creator's password")
+
+        remove_parser = subparsers.add_parser("remove", help="Remove an item from the blockchain")
+        remove_parser.add_argument("-i", "--item-id", required=True, help="Item identifier")
+        remove_parser.add_argument("-y", "--why", dest="reason", required=True, help="Reason for removal")
+        remove_parser.add_argument("-p", "--password", required=True, help="Creator's password")
+
+        args = parser.parse_args()
+
     if sys.argv[1] == 'init':
         if len(sys.argv) > 2: 
             print("Improper input")
@@ -308,35 +426,46 @@ if __name__=="__main__":
         else:
             init()
     elif sys.argv[1] == 'add':
-        add_parser = subparsers.add_parser("add", help="Add a new evidence item to the blockchain")
-        add_parser.add_argument("-c", "--case-id", required=True, help="Case identifier")
-        add_parser.add_argument("-i", "--item-id", action="append", required=True, help="Evidence item identifier")
-        add_parser.add_argument("-g", "--creator", required=True, help="Creator")
-        add_parser.add_argument("-p", "--password", required=True, help="Creator's password")
-        args = parser.parse_args()
         add_evidence(args.case_id, args.item_id, args.password, args.creator)
     elif sys.argv[1] == 'checkin':
-        # Define the parser for the 'checkin' command
-        checkin_parser = subparsers.add_parser("checkin", help="Check in an evidence item to the blockchain")
-        checkin_parser.add_argument("-i", "--item-id", required=True, help="Evidence item identifier")
-        checkin_parser.add_argument("-p", "--password", required=True, help="Creator's password")
-        args = parser.parse_args()
         checkin(args.item_id, args.password)
     elif sys.argv[1] == 'checkout':
-        # Define the parser for the 'checkin' command
-        checkout_parser = subparsers.add_parser("checkout", help="Check in an evidence item to the blockchain")
-        checkout_parser.add_argument("-i", "--item-id", required=True, help="Evidence item identifier")
-        checkout_parser.add_argument("-p", "--password", required=True, help="Creator's password")
-        args = parser.parse_args()
         checkout(args.item_id, args.password)
     elif sys.argv[1] == 'remove':
-        remove_parser = subparsers.add_parser("remove", help="Remove an item from the blockchain")
-        remove_parser.add_argument("-i", "--item-id", required=True, help="Item identifier")
-        remove_parser.add_argument("-y", "--reason", required=True, help="Reason for removal")
-        remove_parser.add_argument("-p", "--password", required=True, help="Creator's password")
-        args = parser.parse_args()
         if valid_reason(args.reason) == 1:
             remove(args.item_id, args.password, args.reason)
         else:
             print("Invalid Reason")
             sys.exit(1)
+    elif sys.argv[1] == 'show' and sys.argv[2] == 'history':
+        command_args = sys.argv
+        try:
+            case_index = command_args.index('-c')
+            case_id = command_args[case_index + 1]
+        except ValueError:
+            case_id = None
+        try:
+            item_index = command_args.index('-i')
+            item_id = command_args[item_index + 1]
+        except ValueError:
+            item_id = None
+        try:
+            num_index = command_args.index('-n')
+            num_id = command_args[num_index + 1]
+        except ValueError:
+            num_id = None
+        try:
+            rev_index = command_args.index('-r')
+            reverse = 1
+        except ValueError:
+            try:
+                rev_index = command_args.index('--reverse')
+                reverse = 1
+            except:
+                reverse = None
+        try:
+            password_index = command_args.index('-p')
+            password = command_args[password_index + 1]
+        except ValueError:
+            password = None
+        show_history(case_id, item_id, num_id, reverse, password)
